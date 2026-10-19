@@ -168,6 +168,14 @@ jobs:
           var SAMPLE=["أبو فهد","سارة","عبدالله العتيبي"];
           people=people.filter(function(p){return !(p.id<1000||SAMPLE.indexOf(p.name)>-1||p.name==="خالد"||p.name==="عبدالله");});
           try{localStorage.setItem(KEY,JSON.stringify(people));}catch(e){}
+          var Island=null;
+          try{var C=window.Capacitor;if(C){Island=(C.Plugins&&C.Plugins.Island)||(C.registerPlugin?C.registerPlugin("Island"):null);}}catch(e){}
+          function islOn(){try{return localStorage.getItem("dayn-island")==="1";}catch(e){return false;}}
+          function pushNow(){
+            if(!Island||!islOn())return;
+            var a=0,b=0;people.forEach(function(p){a+=sb(p,1);b+=sb(p,-1);});
+            try{Island.update({inText:"لي "+a.toLocaleString("en-US"),outText:"علي "+b.toLocaleString("en-US")}).catch(function(){});}catch(e){}
+          }
           function save(){try{localStorage.setItem(KEY,JSON.stringify(people));}catch(e){}}
           var view={screen:"home",pid:null},paySide=1;
           var $=function(i){return document.getElementById(i)};
@@ -192,7 +200,7 @@ jobs:
           }
           function find(id){return people.filter(function(x){return x.id===id})[0];}
           function render(){
-            var app=$("app");
+            var app=$("app");pushNow();
             if(view.screen==="person"){renderPerson(app);$("fab").style.display="none";return;}
             $("fab").style.display="";
             var inT=0,outT=0;people.forEach(function(p){inT+=sb(p,1);outT+=sb(p,-1);});
@@ -212,6 +220,7 @@ jobs:
              sec("ديون لي","ناس عليهم مبالغ لك",1,fmt(inT))+sec("ديون علي","مبالغ عليك للناس",-1,fmt(outT))+
              (done.length?'<div class="sec"><div class="sh"><div><b>مسددة</b><small>تم السداد بالكامل</small></div></div>'+done.map(function(p){
                return '<button class="row" data-p="'+p.id+'"><span class="av">'+esc(p.name.charAt(0))+'</span><span class="n"><b>'+esc(p.name)+'</b></span><span class="amt zero">0</span></button>';}).join("")+'</div>':"");
+            if(Island)h+='<div class="acts" style="margin-top:28px"><button id="isl">'+(islOn()?"إيقاف الجزيرة":"تفعيل الجزيرة أعلى الشاشة")+'</button></div>';
             app.innerHTML=h;
           }
           function renderPerson(app){
@@ -284,11 +293,20 @@ jobs:
               var msg="السلام عليكم "+p.name+"، تذكير ودّي بمبلغ "+fmt(sb(p,1))+" المسجّل بيننا. جزاك الله خيراً.";
               window.open("https://wa.me/?text="+encodeURIComponent(msg),"_blank");toast("تم تجهيز رسالة التذكير");
             }
+            else if(t.id==="isl"){
+              if(islOn()){try{localStorage.setItem("dayn-island","0");}catch(e){}try{Island.stop();}catch(e){}render();toast("تم إيقاف الجزيرة");}
+              else{try{localStorage.setItem("dayn-island","1");}catch(e){}
+                Island.hasPermission().then(function(r){
+                  if(r&&r.granted){render();toast("تم تفعيل الجزيرة");}
+                  else{toast("فعّل «العرض فوق التطبيقات» ثم ارجع");Island.requestPermission();}
+                }).catch(function(){});}
+            }
             else if(t.id==="del"){
               if(confirm("حذف هذا الشخص وكل سجلاته؟")){people=people.filter(function(x){return x.id!==view.pid});save();view.screen="home";render();toast("تم الحذف");}
             }
           });
           document.addEventListener("keydown",function(e){if(e.key==="Escape")closeSheet();});
+          document.addEventListener("visibilitychange",function(){if(!document.hidden)render();});
           render();
           })();
           </script>
@@ -301,6 +319,244 @@ jobs:
           npm install @capacitor/core@6 @capacitor/cli@6 @capacitor/android@6
           echo '{"appId":"com.example.dayn","appName":"دفتر الديون","webDir":"www"}' > capacitor.config.json
       - run: npx cap add android
+      - name: App icon
+        run: |
+          R=android/app/src/main/res
+          mkdir -p $R/values $R/mipmap-mdpi $R/mipmap-hdpi $R/mipmap-xhdpi $R/mipmap-xxhdpi $R/mipmap-xxxhdpi
+          echo '<?xml version="1.0" encoding="utf-8"?><resources><color name="ic_launcher_background">#C42B3A</color></resources>' > $R/values/ic_launcher_background.xml
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAGwAAABsCAMAAAC4uKf/AAAAYFBMVEX79fXCJzb21tOQFyf98+7ZnKD98erHNkTSW2aMGCmqAFX/srKtV2GqqqqqAADVoqZ/f3+bM0H/f3/Cf4X//6oAAAD+9vHz2dIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASvvbmAAAAGHRSTlMH//7+Rf6F//9BAwP/AwNBAv8C/wMA/v13KX4xAAABSklEQVR42u3ZbW+DIBQF4NOrqJva7g34//90jrlNjYLSQtrsnC9tguGpRm6Te6EzBsSIESNGjBgxYveIAR/wpT0/u5x74EqsP3TnIc6/3A8XlP5cnsZcvijEY60uxYqL2YoUY5QxFfz7wbtWitjvbGJqghmDwIaeJdjf7MQMgEisksNYpaOw2Y1Z2Yl5H+RjYyUxYsSSYJ3Kh72K6bJhw5p0mTCn2DzY+/iZA5PFl6TYMsSI5cNkPSkwaU7raeT2mCo2sJ9q9bBY1seY9QXhoSbG2sjayNrIQ03srjGrJpG0mK1nJUQlxVRR/1H1qUmMzQpiWsyoepJGMv55rr2NcZ1UDexpSC8S2ZB2bf3DWGyrfdZrv8GRDmCDZiUwHpn1RKDb+MEP3Nyn2pPhOrxdM/jR/h96eLfQfOylxYFw5kmMGDFixIgR++/YJ/c7elwrh9VWAAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-mdpi/ic_launcher_foreground.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEX45uDimp2fFCTFKjneGSHIOEXSXWesUVzFKjr/Z2e/Pz9/AADFKjnSfIN/AH+qVVW/KjifPUrEKjn++PPy1tAAAADAHS7vwsIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAaQFeTAAAAGHRSTlP///+cIf///9ACBAJR/wIDcf/+//8A//8+RREvAAABJElEQVR42tWWi26DMAxFbfIY0LJuSUz+/0/npE3aTGK1J1XaroQEyAfHGK4DxFqJrJnDD5qNrWFEwMc7nU14KkaWClhLgvCKlFigixXGlyQXgpXE8SXHyksKCvGSTkYDmBOoEnAKMDrAwNivfdD11thBGC6dx0f5aZretjHFADgEgHhXLkDM7gjYPaSUOgERKxBxPwJwAGIDcvjXAH7qgC1mFQDXQw60/r0AePieREsq31ATSgDYfFf6I0UnzE0iIPVfNQiL9q4LZTVA14uKju3hQuBWA4qB+pbqC9L0AXN3myObCT6NRnYj/KHzheqUpb/YTvjUj1Y5P/Pr72astnv1QFGPLPVQ5LHrxPEftAAtisHOmwfN1uHMD//N5kS+/Snx9AXstJNe+yP0XQAAAABJRU5ErkJggg==' | base64 -d > $R/mipmap-mdpi/ic_launcher.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAADAAAAAwCAMAAABg3Am1AAAAYFBMVEXimp3WHifFKzqfFCT25dy5PT3FKjr/XV3SXWfIOEbGKzp/AACsUVy/KjmqVVXSfIOfPUrEKjoAAAD++PPy1tDAHS7vwsL56OMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAveb4nAAAAGHRSTlP/FGv//wTGAv//mwL/VAP///4A//////99WXSAAAABjUlEQVR42pWWjZLDEBSFD01EZNss0Xj/N13R+I1mOTPtGHzhch2gEpHx+KOCSScmKLEVI0n7IClPR++zsxc7mKkKLLa7kBUJ4hpLYFQjlV9EbWMJTIow+VWMhGnBf5/KW1E/Btr6RwKN/QMBN/+nbNDTxQEXb6h8Z/pUhUYXORR5xfWZOVLxx+PxsyZr9SIWmGIAM8wwbFH7AWz7HMOYFBYSJvTmRmsdCLPBARvCrAhZMKqQD28MFjBxhBPYY5aoESSJ+F/ADoFkCxoAamNgPQBbEGdUA/CbA5KA3gHrthcAhbgBzOeXAgLsBvD7l54MyD5A1oEkn0wLcOSQF1oAs/Ig3TSl7hjugOqyauxel2WtbZwOR1WWQYtqagx8DkKZGvXkM0FbmXx36X0N2qZ3/QD5j5eAPUC1I3rGgCtgj2jNBNwquQUqgMMEUptxwHDuA/bgNpnNpEbG9ZAZ2UnwzMgyq3ROeewvfMEWeWGVmRlXdDHjfrvvv1D6r6z+S7H/2u2/2PufDv2Pk8bnzx/eYY0EE2EtjwAAAABJRU5ErkJggg==' | base64 -d > $R/mipmap-mdpi/ic_launcher_round.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAKIAAACiCAMAAAD1LOYpAAAAYFBMVEWQGyv5497+9PDSXmjw1dT87efhpajHN0XAHi5/BD+NGir/urqPHCutV2H/f3+gPkvcfoXSoKPvv8AAAAD+9fDz2dLDKDf//v4AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABaj+lEAAAAGHRSTlP+/Ub/FIT+//8EgAN+/wL//1H/AP79/wIWRBYXAAACE0lEQVR42u3b7XKCMBCF4WwIgVbtF4Tc/50WndpqtSURaNbOe2Yc0ZHwGCDsnzWd+hiIECFChAgRIkSIECFChAgRIkSIECFC/CviUzxmE5PycJpxn7WJNxzhYohNXJG4Bzpra1vX48umZfu4ffzIdvvq3H6c1YjjyLYOckyfFnOacafabvKMJkfoapHwmTSjnBH94SuXZTQZZ9mdAmcQ+z7LmEHs6jPhHGKW0WSc5nPhLKLE9LXB3DyJs4i97RYnXlyJM4myWZ7YuRAWJPYxeRqLEZ1+ooUIESJEiBAhaiCGnXai/3zXShyFvVdN3B22vGLi88cvd3qJ4bi9M6KT+DVzQecsBn/ywask/hSIECFChAjxPxB9NRkvRYneDJMxjRQkypCQxviCRD8kpWIW7/xavIc7mqUbIkSIECGuQZTJFK+6m8lUZZ/RLwmVTtuEgsSQUi+2pqLqvvuqu22nq+6KqpunC0SIECFCLFB1v02U2aWJUl2pbEQVsbpWdZ9V2aWJcr3K9tqJQ6uK2AzXSlpRdbs0pv2ewetadIK/yO+LTlS/dIuiZpLZ5zmHaBckSnxantjFeFNj0+xJzOq9ckEWItp12sMO3VeyCNGu1GR3bATMbVW8SO1Wa1U8tFM6a/ftnjdm3wDq1mz4XKRrNn8Qkz3+7OT+JbrMIUKECBEiRIgQIUKECBEiRIgQIUKE+I+J7zc8eJakkALFAAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-hdpi/ic_launcher_foreground.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAYFBMVEXhlJjy086VHi7THynHN0TGKzq3ODzFKjnFKjr/a2vPVV+tCFGqVVWnS1bcfYR/AAD/AH/EKjn+9vLy2NEAAAD66uXAHCzRWmMAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAABQGiiHAAAAGHRSTlP///8Z/84GZI0C/wYD//8CAv7//wD///9p/8ZaAAABg0lEQVR42u3Y3Y6DIBAF4GNRQOr+ICDv/6YLUmPtakthNtkLT9petOHLYLlgBjaF9eEtZKez00nBrOW39RY3J7zeUW5WpNg9xC2XuiiC2+sKDZZ1ujAdS9uLUG+FrkiSEPdV5URpiFBvmda1Um/BruXPZ31OVwZupa6OtBz1G0ubA0VBsSSQFBRKgqCBBCQNJNHRQB12v1b+d5S/zPHttLdkF4JpQsaHuAQ5h1wIzsQcQeOIKQtSxryARpUF+SZB7hjaKemE/i308UEEGUcDIRAEkEH8hKmG7nJCG6jZBKYU+twumdqmDHKPP15QWBHabbwrfUZum/McnefoPEd/e47gKiG1LFFNFeTay3KA6qARy00U729NvX7YPvMy2qx3yOUIjvcsMm+1LeL/dFwQ2tx7tlZ4Er+75KCFmJ7koIUga2rI2ixOA4WelqQkEVpRkl50btcFRUEcbKAYIHwzupGGrZeiM499eJ00O2kQxesGUf06GhuIRmNVw7qvzdSvfnz4A+kFTFWY7UjoAAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-hdpi/ic_launcher.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAYFBMVEXkFhzhlJjy087QWWOVHi7EKzm8ODzFKjnHN0TFKjqqVVX/XFyqAFXkFGF/AAC/KjqnS1bcfYTEKjkAAAD+9vLy2NH66uXAHCwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADONWb+AAAAGHRSTlMQ/////2MKnf/NAwIDCgJl///+AP////+jVUvtAAACNUlEQVR42s2Y25akIAxFgxYg0tWXqNT//+mATtkC4SLDw5wH1yot9woQwyGwUAIB7gpcKoW7lJIc4HxEvELd0+7CJUayMPtIQx1oTlAurLkC9GHvJSl/WbD/LQ+aF8GxKC6ioCD8xRVWSHHi1euwhMRKSeEP7wrSCyisloJF0yCxAN4S2FcIkFg43hS/kOAfOB4JTs4XNujrJMGZPtikM6EOkAbARgHoXxDMWrWClJ7hBOklyMOR1GPXOL38zDzSCfYJChaMbYPVGsgcIGNYuHTzAYKn8AfGzOaUAq0r82JS4gk7KAxo3LYCaB3jkMAW1GcwQcMBMmmQHxI+bREGYqZvg9x8A0CYivdBKCwGom+sAcRtQB9RhW4ASYuJi1ADCN1k8xug7+8EyI7tU94AbSYBkp/EZ58GMYugQbYI1IM25q5sS4B4NeiiGMSJ7bkJJImdrAmk+oGwABo8sS0BwhLox3/lNQ1tIBM+fLDGiNjkazSNoNX4WlvnqHbV8D/MI9knj2Tpo63NI14oI9V5VKxHtXkExVJbl0e21NYX/9yq8eXGdpQDWUz9BpkBuQ2ytGW/E8jkQG7LLpiI8XXezYCcicjbGjM93gmUAe22pmC02NuJsszQDqMVW7/yZJPWjzCjw6+HfKfgesX6tvY0o1FIE3PrlA6ITbQ9pgw7y2jElGEnjhCvjDJHiG6Hmn7HrH4Hv35H0X6H437H9X4NhH4tjX5Nln5tn46NqH6tsY7Nurb24R9Qc1bMRH7DcgAAAABJRU5ErkJggg==' | base64 -d > $R/mipmap-hdpi/ic_launcher_round.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAANgAAADYCAMAAAC+/t3fAAAAYFBMVEXz2dPDKDiOGir++/v45uDbkZbIOEbSXmj56OF/AzuMGimvWmTaeYD/uLi/Pz+UKDa/f3+qqqr/AAD/f3/Hh43//78AAAD+9fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA/c3MOAAAAGHRSTlP+//4Grf7//2UEgP//AwR/BAMBAoAEAP6HyGVUAAACh0lEQVR42u3d7ZKbMAxAUW2Ewa2Tfuy28P5v2tB02ia7zcYIG6xe/UtmzORgY0CTkWR0GgIMGDBgwIABAwYMGDBgwIABAwYMGDBgwIABAwYMGDBgwIABAwYMGDBgwMww/XpSW3z5cBOf5m83hump1Ak300wwnX9AjLGzxLePN/E5RlUzTUwujXIdU36Ew23M33bx53nbBHZ2iZSAXY7SqUkmBleUkrBpihaZrOpaF2aSLYXpi0px2GRYjYthY1cBJsvvaLLexlEANnVjdVisAlu+GGXVlbg+LFaHSR1Y53XGRJ3CFl9kwIABAwYMGDBgwIABAwbsf4eF4BOW/hB9weahySHsMjK5g4VfOSlvsPQ72+YLlq6ZfmB/D0uOYNejkhdYCtefJTmBvRojTmDvBDBgwIABAwYMGDBgwHYCk5AV0gos9E9Z0Yc2YPKUHdIEbMiHDS3ApM+H9QKMpcjmwXbv9wbNsyIwYMCAAQMGDBgwYH7yikNWtJNXzH2BbuRFMxxyYYdAXpH0G7DHl+IxH3ZsI6/YWydsr9u9ZG4fr29ku33ykCAPxxtpRR6pgAEDBgwYMGDAgAHbD0xsxdT2CgtD/3YcpWnYcHj8Xbkl2N284tAwbMj621Q7sHdyOYEZ4xpjV9z8Pra4UnD54qy2J4+Gi7Pej/rldGMdWP0CyFoFVr1k9YpFxu9PmFaHqVaAxfpl4dcr5F9kIdpaL3SFYVG3aL0wtx+JJWESN2qWMT6ft8auFEyMTUBsDWlO53mzdaP5R1w60oybwcYVehiVOrS56dN3LRPWE0ObLmDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAEDBgwYMGDAgAFzDPsB5fIZywZNCFQAAAAASUVORK5CYII=' | base64 -d > $R/mipmap-xhdpi/ic_launcher_foreground.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAAYFBMVEUAAAD01tLSXWiPFyfHNkTTkpbEKDfXHyfFKzq4OTvFKjr7A3V/AAD/eXl/AH+wEk64bXWqVVXbfIHjv8Dtwb3EKjn+9vHz2NIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADOQ1aXAAAAGHRSTlMA///////bElsFnwMCAgIF/wP////+//8EOEecAAACH0lEQVR42u2a65KCMAyF20qTUrzvFt7/TbcFUdSKgjnOzi5nxj8y5pumaSxJlBqojB92nijMEpF31clMTrv4yPnwprxjpaqc/TKapyAgcmVmEbxVMuZbBKsNX9tfK+WCoFxr8qKNYh9E5Xm4EWvFFIQV3XReA3Mpbj8RuN+HSvkAkO9jqcTYTzvdEg6KA0gxWpODdoQC0K5KDnIBpuSkLRMOQDFBIBfQnmhUCPWhiguhPpAcFuCwHko+IiyAxgHFiPofFmE1Chh5aKxOanROtV11stoWI0ZGANF8k6TrrM6AutaGZgBMZz7qGUBHwgyA7QHPVxDXMB1QnBfwCqA2C2ABLAAQYN+AATEJQQFfdUraMMC+s7zfowCnr7VGAa61AP4IIHt7kQNok7t+WTmAyV7gTgdZBJCr8hSCgKbIAMhouU3WFrvJy0H7D4AmE0VWC6aK7CuY4DkwVGBPss3mIpID1NZkZJcwXQC/CjAM0wYAGB60lQEABqki/jlrecBVsrN3K6DJgOZxurZaYJPD95QomlHOoaOeAJhTkLpUpJ7bP84pqUVCc325euifkZJdGC1rFuYlvVE3lSjMwkvL8OI4uLxf4hsU8BYLtklUbvFtLmyjbtf1knEdok3XLHUoBx2g7dhzu1cxM6RhXfGnWu6pJy4+NFCq7SfHHuI+bATd5O8HN2RHT1QX/7eqJIZnyLuD4urBfI7A+A/fjv/8ABpvqzviGsGjAAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-xhdpi/ic_launcher.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAGAAAABgCAMAAADVRocKAAAAYFBMVEX77OcAAADSXWiPFyfHNkTEKjraGyPEKDi7OjzTkpbFKzmtCVH/X1+qVVX/AH9/AAB/AH+/Kjm4bXX/AP/bfIHjv8Dtwb3EKjkAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAjJF69AAAAGHRSTlP/AP///1oV1gf/owQCAwICAlT/Af////5359neAAAC0UlEQVR42tWa4ZKjIAyAUyoEUdvd7t7x/m96UdsuayNGJJ25/HBntmM+CQmEBDjl5erd+MdZGxDjXRCDtfP//XVDAWR/7S708KQ7MkIUTz9fumJAP316iBkJ00D6IgC91eW1PxhdDrEG6EbTYBQJjqbqdgHcRa7+gbg4OYAGvEf9jFixEwfwJx/ibgn0mghAI7WxSOz08hagK/r85yC6LYA/OYzFgu7FTPCiPx6SFwIs9Nt4UOyCAJX1vxCgtv4lAVL9n7GKfKYESMLXxUrikqB+AnpXTT8RXL8EuKHHegDsB7cA+FOIFSU8p+EOGHgHajLyGHATz6wrDSngyk6AaSEj7XmWFtqGnYZrAhg4A2XVpwAAg4yRhh/AwHmoATkADOerwxNw6XD3AH4DgPGkKeeZAD03ww3sAhhunvs74IMbwHEAdh8zgB1ABcA8BAJ8edQBoP8aAWsxdhwwRRvQNh20AIGUg1tZpWsAKBYcAawewBJgxUJ1AGQjWNvHJIAbbADIRrC20UsA9NwAWAKEYsCf6ZkFhBN4LATcZs23Ww6AHta2+k3AbzFr2z9YXYDVBwRdQADUBaA+IOoC4g6A4dKvth7AcAlcvAdyFQByqUFFADQMAE3FOYBWeZLVvagQ8P9HsvpiZw95UVtzP2AtYDYBTh7JTUEkO/mm37JrEeYBtOnL05bWMLKxmoYDiZfIi8bEy2kCKHUsTn4lgDH5LU7fJQA7nQ+cHmA8gBQfoQSA6QglPwSmbioDzIdA6TE2DbSzkQDux1jpQTxZKuiDJIDHQVxaSshWSpiCzrOUIC6GtJl1O1sM4cs5f3d5Ubacwxak8Pugl6YFqaKSWirfGyW1laKgmMDM8KIouBJtjRFJ3C5r6hdm9UvL6sVx/fK+foNCv8Wi3yTSb3PpN+r0W436zVL9dq9+w/oNLXf9SwP61x7ecHHjDVdP3nB5psr1n3+R8bxhsoTy5AAAAABJRU5ErkJggg==' | base64 -d > $R/mipmap-xhdpi/ic_launcher_round.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAUQAAAFECAMAAABoNLf0AAAAYFBMVEXDKTiOGSn++fn63tn24tvakZbSXmjHN0WrVF9/AACNGSn56OL/tra0tLT/f3///7H/AADaeYB8AAyqU13GhowAAAD+9fDz2dIAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAbKz5tAAAAGHRSTlP//gf9uv7///4Cvl0DAwIDAf//vr0A/v7HOPElAAAEmElEQVR42u3d23qjNhQGUIzAdksOM20N7/+mJc58nc43Jj5pG7DWfxf7Is7yFpLIBqqD3J0KAUSIEAUiRIgQBSJEiBAFIkSIEAUiRIgQBSJEiBAFIkSIAhEiRIgCESJEiAIRIkSIAhEiRIgCESJEiAIRIkSIAhEiRIEIESJEgQgRIkSBCBEiRIEIEeKP1K/vdXDe/pjK2/H9tSPWLwuok3jHKpiwrrsmOH//OZV/mqbr6qPjWhHHD143w5BOpM+Z/WYq7fH99OFYrxOxHglTGk7moYhjmjpUsQo0nCIc0qMRx2qMHNJVmGE3aTgD4liMgYpVnOEwLAkxUrGKGsvDsDDEUfGlXhHiuDJLaXGIH7W4JsRDk5ZXiX3fBSlWjx/M8yH2QZuXaoZCnA8xaEBXMxTifIh9zKI7BjEtFbFZD2K3WMSYUqxmOCQ+fu8cPEGHIKblIjYqEeIiEFPEUrE0xJCZBSJEiBAhQoQIESJEiBAhQoQIESJEiBAhQoQIESJEiBAhPg3iHuLdiPtffoJ4C+K+7weIdyKmPvUtxLsQP5tHW4h3ILZTL0C8GHH/2ysQr0X8afjf5ALxWsT/d9O3EG9C/PWKhBbiDYjtJS9C/BJxf/JViNcg/m54nFwgXoN46hKtFuJViKcvc2v/gng5Yjv1xh7ipZky7JNKDApEiBAhQoQIESJEiBAhQoQIESJEiBAhQoQIESJEiBCDENtthrRDyYjDtsqTtlzEYZfJsNq0xSLmqsOvavHZEdtNRsRtoYg5C7GqBohh4xniNUmFHhNzGu4KHc6pMrFkWOJswueVAnYs2/BlYgl750yHxW0q+gREajMkORXmVBhEiBAhQoQIESJEiBAhQoQIESJEiBAhQoQIESLEORDT/SkccWi3u/uzbUtGbHd5Gkk20/+9f3rEfB1Nm22piGmXr59pU2zPtta6+xF1yi4OUc+2SlxGz3ahiENGw833UteJGS+pmlxtF7BjyWY4lNyznWVy2X0vu2e7H9rY0zjOJzqfCBEiRIgQIUKECBEiRIgQIUKECBEiRIgQIUKECDEI8aI7NA0QM9wrbJsg3n/Xut0Accpwk+O+dGUjphw92aUjtjl6sktH3OZo4oQI8bGIhvP9jbImlgxPwbh5oeh5LJc8tab4HculTwba3bztS3XtGVWfz6C6fevcBBRiDGJa7qmw9SAu+HxitxrE7gximg+xhrjM0RyDWA9LRezWgniov505KM6GmEIMYxDPjef0VEfEGMSz83N6qsEchVjXS6zEJsgwBvHcgJ4HMWTHF4h4ZkCneQyjCjEM8fUrxTkQmzjDKMTxsDiO6LQcxOYQZxiGePg2fvNpinGOMowzjEP8+OZfx+nlFOSDK7HpIsswFvH4weuumRMxNU1XH0LLMBjx8LmmeK/ny8uP4/NhvYhjXl/eD3NmhHwL/yXVQ/6O+fKQb6o6CESIEAUiRIgQBSJEiBAFIkSIEAUiRIgQBSJEiBAFIkSIAhEiRIgCESJEiAIRIkSIAhEiRIgCESJEiAIRIkSIAhEiRIEIESJEgQgRIkSBCBEiRIEIcS35FxRSaAT2xbFAAAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-xxhdpi/ic_launcher_foreground.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAMAAADQmBKKAAAAYFBMVEXz2NEAAACRGyvAHy/fjZHSXWfjFx7FKzq5NDvFKjqqUl3/YWHHNUPxCm2qVVWrBVPWe4J/AH+qN0X/AP/vv8DswLzEKjn+9fAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAf4kQYAAAAGHRSTlP/AP/3//8TaAul/wL/BQMD/wL/Af///v9/2p6uAAADH0lEQVR42u2c25KrIBBFW4EWR81lLvj/f3q8xERHo2gI7KnDfkj5YMpVdAOGdG9KFsSa288sz4UwjiVEnmX6/pCZaAGn6GnMG5VnLU3BNkANjs6Eebs6ptMmUHOHzo0n5Q1StQ6km9ExHtVkk14B4mviI1iTHOdfmTQGOidJZrwr6x68BFR4zJ5JJul2Is2BdMLCBFETNj0HanhMMI2I6D7dA/K0RKcpUJM/xkAQ9UD8pUVYIKGvPAKqktwEVn6batQndHCedj3SA1DghH6kUdEDccUCAUjoijugIsSGsRy0UwvEXBkQVcwNUIGQ0Y+ZRszawEgzE6NkUJ9FTCBTbNj3K8JYgx5rESFFrI0Z4cyxfp4RVMSamFGGBZThAeVYQDntWYXETe9cieyBhFFK9lKb+kwfUsqIHUDWt8ofGlRv6mMEVNckS2skW6BSEh0Eam8n5RpozHMAqK6VcAo04TkEVCuXQCW9DkQugZQDIMshsgIS0gWQFGhAaCNEESgCRaAIFIHggD7BgCRhAV2a/RQJ6KPb4YGAaHoRHGh4cUUBksMVYQDJ0SUE0JIiUASKQBHoPwGib3ouSb6BNo/qLp6BVLrx1VR6BaJy+6zL8whtHEGXwjOQ3DjWT0vyPMu2TvUprkMRKAJFoAgUGIjkunyv1FSmYk2p8ryXKbH+AlLG9yGwEcLLIbhZFhfGCBSBIlAE2vzlKsMCzX/bp5egQEunHxQQaPF9SAYdofkJWhlyhBbOGJ/y+Cpomp3CPv8PzV3J1/6iuCU5LIpzAuS0bHB3YeXhAbIFUi8DXdyWnk6JjvCkxi2QUfIFIKnsy5fta6/v9d17pdSeAu8d9eziqMyOZ+A1CcS+ji0gxgJivGYlvHYuqJhxQmcGilnOZ7ymSaS2UqG/sBpv24ZyqNZk3bUmJyec5u3i1t6uMdrbq+pmAFCAGQC0FgkZQsBODxOJAsFEQo9tNq7BbTa4GttshPeR4MHQBtWqJbiZTQFl9zM2IAI2RMKzjOos2RjJVCuM7VixbsxWeTRmExbGbDevOD/Wdefktyvb3zD3C2x/+A9SSgdPiy3fEgAAAABJRU5ErkJggg==' | base64 -d > $R/mipmap-xxhdpi/ic_launcher.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAJAAAACQCAMAAADQmBKKAAAAYFBMVEXEKjn77egAAACRGyvfjZHbGyTSXWfFKzq6OTzFKzr/X1+qVVX/AH+qUl3HNUN/AACqAFW/KjnWe4J/AH9/fwCqN0Xvv8DswLwAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAADRFSt1AAAAGHRSTlP+/wD//xX/nwhVAgMC//8CA1z/AgL////AUYj0AAAENUlEQVR42u2c6XKjMAyABUE+CEuOHvv+b7rGhBLA9W1HsxP9aTot5BtZvnRBGy7Yi/knSsk5bIRzKRH1n0WPES+HYBox6B8HlB2WhhkElgXC8zDDgIfMUMMZiwFden+aZ6b+UgToeg6keWI6X7MDXXHCgSiZkPCaFQiV0sOV86wmNeCYDQj7NJwFyWsZ8ABSOJiIo5FQvyoZSM1zkQFHIwn9ujQg0QoJ2USq1yUBTdMDsgrql8YCiWyjtRk3EQskcqtnUZKIAsKhlVBEZDtgOJBaWTkUEq5fHwbUFzCfjSH1YUCFzMfDkOA1PL8TwYt4fiUCI4+ECiKNRGDiuUEVuZmIwLQ8QyUxLdoHoHMN+1nt6OwCqspjIoL9fiGgqoj9LgJ7A+J1gfjejOC1PEci2G5gN6gut+22BhsehBcIbojg+eL+Eh5F9Hz9hwADYqybhTnl67QKYyFmBN4D1v1t/OXPE5D6tRu9Bw3WAbOuQGPXNPFATWPXklgHDdYl2rrFh/EcgexEcl2wF6DLgBl5DEB2IhwuO6DeatFjkw7U2O263wI5LJrlAGJedg2LSwFyjpgRqLN+xeKGAB+LrgG02DU8FMTLAzWO1XFYgVwKqgG0qOgBxF8PxFegT+cuXwNITbTPB1DvPJZVAZrXIphiKM5jRxUgwClqAx4mXQtImzW453w1ID3zoUWPg2sdIGXWqIB8XAuVgCb3g9pDPNz0kUBfgUAc1Z7qM2KRQF0TCKRheh9nUBTQXe2ngUCy7RUULwP0R+/wYUBcaehjgDJAuw9eQDB8gNdtNQJo+RQGNE17WQRofSIISCogXgKoM3308oUUAjKKH5CXx6wakMJBWkAIkhaQpAfEaQFxekBACwj+Q6BvvwW7FpDLoXmvDMROjidPXV2g0fkoq6whx4NjbaDONWJjbaN2efXf69Ab6A30Pg85gd5nahdQ6jWos0v4NSjxojjazx8nFnxRTLtKM7AfQMbA81Dy3T73eYinumNya2hyxyAlG8I22aWXd5YNH4WcnpHrEC/mFo4Emt3CSAdogikTWogD0qGFMsGXOKA5+FIkPBUHNIenigTwooAeAbwiIc4ooCXEWSIIHAW0BIGTwuSHm2sXDfQTJk9JJDje7U/3WKA1kSAh1cLk/YgE4pvcj9hklDHknz1MOjldx+BBG+M0tEnXSUhoYv48IQlNKSlf394xNOtXbFO+sifFBbv/9klxjrWIlV4XD2mDuRMrgxV0SKx02HW6iu4+Fh2QnJtKdLfeTkzJuU67Thm1joGXRYcleP/kd4eKK8P7lwRveinw5IoE6JVR0Cs0oVeKQ69YiVw5F72CN3olgfSKJumVldIrvKVXmkyveJteeTu9BgD0WiTQayJBsM0GvUYk9Fq1EGxmQ6/dD8GGSPRaRhFsqkWw7RjBxmwEW9cRbO5Xof3hP2DtUZOuZ3G1AAAAAElFTkSuQmCC' | base64 -d > $R/mipmap-xxhdpi/ic_launcher_round.png
+          echo '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' | base64 -d > $R/mipmap-xxxhdpi/ic_launcher_foreground.png
+          echo 'iVBORw0KGgoAAAANSUhEUgAAAMAAAADACAMAAABlApw1AAAAYFBMVEXEKjn77egAAACOGirTXmjHNkTcGyLimZ27OTzEKjrFKjn/Y2OrUl2qVVV/AACtCVH4BnnWfYK/KTidN0X/fwB/AH//AP/swL0AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAhha+AAAAGHRSTlP+/wD///8W/wlroQL/AwIEAv9O/wICAf/NaCacAAADy0lEQVR42u3d627iMBAF4IkJ4xsEaLu77/+ma5trQpImQIwPmvnTVpXo+Wo7wUHykBor9j59YescZS3nLHP82343mlDRaPxTeHpTBUSMYPghAG+V2r0v/AURc3ieDYh0tlRE2RB/x/MAJsR3VEy5EN/PAOyDoKD4Z8J+KsAoY6m4sibOiwmAxiumIov7FvMdIFx2LRVaNsUbB5jiZn9rJdxPI+rmZyq6uCugTn5LhZftCAgs/52A0PJ3BQSXvyMgvPxEXzeCC8ArQzBlru+MzoCGmYCKuekAPDskgGPfBgAtgM5CptMCYAIrPi0DOu4e4fIHwZYvAI82gY6TyJ8BDRsCLJOuRBGwVQ4R4ELwBABcwTfrmGAH4DQEpBh1AOIQcABAXoKuF6IwArADEC9EigzuAKQhCACHC3BhD6CAZ1Bcxh8AsMgAq6hxyADXkCHoMsTYACaLDbDksAEOH/BMrc+FSK+11tVDpVft2lS6XuePXz1ed4CoqrPmfyZ+P6CqDjD5BwCVzjd/qkUA+QT/FgJUNcYADAMqiBUwBsgyBOtqOYBGB1RrdEAtAAEIQAACEIAABCAAAQhgCmCzwQZ8n79BBVweMoIC0qOBAy7g9GhjgwrY9H0PBPi+/QER0Pq0ABDQera3wQPo4R8xACMlAAEIQAACEIAABCCA9wPqqaWLBMz4uHpVlwiY82rtzU0ZAP3EywkgP6AucA3UqxkvV+RldHqMtS70RqblTiwAAQhAAAIQgAAEIJt62dTLpl429bKpl029bOrlTiwAAQhAAAIQgAAEkBegewsHMBRDgwDqibuXUgF6NXH/WCyA0AHoIwC/BvCvQk/cBzAOxnjRY9WHSy+XP88JQ4flAHnOCluDD8ByQ5DvkC2NPIH6HsmC/f+XmUV5D8oLg3B45Sjo3PGPhpfVUzHkvNF3A+CPrIU/NBgcYNAPzkY/utx9wOHxjA1g9AYKTB55DrHyYQ3skWdQWMQGuY2LSW1ccBvppBFQHreVkUm9mH5Qh4D55zPaeaGuAk6N7FNLuy1mS7vttangHrAXitnz57R1hGysucVubXrpj3sG8F+oZcB/+NPa+8Zl8IWSv7fBMn6La6Am4/5T27xDCDr5O4Dwy8JvydzJ3wWEX5uC72jOdPPfAdROlTuNbIr3C0A1xb6zC+/fWP0OSNOowEGwpnX5HAOovSpuJThOsSYC4iCokt6exvi+P+kAQLEvh2BjfFbzALF5fRgI697/z485eDDmMOA4Cor5fQhnY/qx+OOA+LwizbyIyKxwIXy65pvdeML/xgdLU6pkU2sAAAAASUVORK5CYII=' | base64 -d > $R/mipmap-xxxhdpi/ic_launcher.png
+          echo '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' | base64 -d > $R/mipmap-xxxhdpi/ic_launcher_round.png
+      - name: Island
+        run: |
+          D=android/app/src/main/java/com/example/dayn
+          mkdir -p $D
+          cat > $D/MainActivity.java << 'JAVA1'
+          package com.example.dayn;
+
+          import android.os.Bundle;
+          import com.getcapacitor.BridgeActivity;
+
+          public class MainActivity extends BridgeActivity {
+              @Override
+              public void onCreate(Bundle savedInstanceState) {
+                  registerPlugin(IslandPlugin.class);
+                  super.onCreate(savedInstanceState);
+              }
+          }
+          JAVA1
+          cat > $D/IslandPlugin.java << 'JAVA2'
+          package com.example.dayn;
+
+          import android.content.Context;
+          import android.content.Intent;
+          import android.net.Uri;
+          import android.provider.Settings;
+          import androidx.core.content.ContextCompat;
+          import com.getcapacitor.JSObject;
+          import com.getcapacitor.Plugin;
+          import com.getcapacitor.PluginCall;
+          import com.getcapacitor.PluginMethod;
+          import com.getcapacitor.annotation.CapacitorPlugin;
+
+          @CapacitorPlugin(name = "Island")
+          public class IslandPlugin extends Plugin {
+              @PluginMethod
+              public void hasPermission(PluginCall call) {
+                  JSObject r = new JSObject();
+                  r.put("granted", Settings.canDrawOverlays(getContext()));
+                  call.resolve(r);
+              }
+
+              @PluginMethod
+              public void requestPermission(PluginCall call) {
+                  Context c = getContext();
+                  Intent i = new Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:" + c.getPackageName()));
+                  i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                  c.startActivity(i);
+                  call.resolve();
+              }
+
+              @PluginMethod
+              public void update(PluginCall call) {
+                  Context c = getContext();
+                  if (!Settings.canDrawOverlays(c)) {
+                      call.reject("no_permission");
+                      return;
+                  }
+                  Intent i = new Intent(c, IslandService.class);
+                  i.putExtra("in", call.getString("inText", ""));
+                  i.putExtra("out", call.getString("outText", ""));
+                  ContextCompat.startForegroundService(c, i);
+                  call.resolve();
+              }
+
+              @PluginMethod
+              public void stop(PluginCall call) {
+                  getContext().stopService(new Intent(getContext(), IslandService.class));
+                  call.resolve();
+              }
+          }
+          JAVA2
+          cat > $D/IslandService.java << 'JAVA3'
+          package com.example.dayn;
+
+          import android.app.Notification;
+          import android.app.NotificationChannel;
+          import android.app.NotificationManager;
+          import android.app.Service;
+          import android.content.Context;
+          import android.content.Intent;
+          import android.content.SharedPreferences;
+          import android.content.pm.ServiceInfo;
+          import android.graphics.Color;
+          import android.graphics.PixelFormat;
+          import android.graphics.Typeface;
+          import android.graphics.drawable.GradientDrawable;
+          import android.os.Build;
+          import android.os.IBinder;
+          import android.view.Gravity;
+          import android.view.View;
+          import android.view.ViewGroup;
+          import android.view.WindowManager;
+          import android.widget.LinearLayout;
+          import android.widget.TextView;
+
+          public class IslandService extends Service {
+              private WindowManager wm;
+              private LinearLayout root;
+              private TextView tin;
+              private TextView tout;
+
+              @Override
+              public IBinder onBind(Intent intent) {
+                  return null;
+              }
+
+              private int dp(int v) {
+                  return (int) (v * getResources().getDisplayMetrics().density);
+              }
+
+              private TextView label(int color) {
+                  TextView t = new TextView(this);
+                  t.setTextColor(color);
+                  t.setTextSize(13);
+                  t.setTypeface(Typeface.DEFAULT_BOLD);
+                  t.setSingleLine(true);
+                  return t;
+              }
+
+              private void startAsForeground() {
+                  String ch = "island";
+                  NotificationManager nm = (NotificationManager) getSystemService(Context.NOTIFICATION_SERVICE);
+                  Notification.Builder b;
+                  if (Build.VERSION.SDK_INT >= 26) {
+                      nm.createNotificationChannel(new NotificationChannel(ch, "Island", NotificationManager.IMPORTANCE_LOW));
+                      b = new Notification.Builder(this, ch);
+                  } else {
+                      b = new Notification.Builder(this);
+                  }
+                  Notification n = b.setContentTitle("\u062f\u0641\u062a\u0631 \u0627\u0644\u062f\u064a\u0648\u0646")
+                          .setContentText("\u0627\u0644\u062c\u0632\u064a\u0631\u0629 \u0646\u0634\u0637\u0629")
+                          .setSmallIcon(getApplicationInfo().icon)
+                          .setOngoing(true)
+                          .build();
+                  if (Build.VERSION.SDK_INT >= 34) {
+                      startForeground(7, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE);
+                  } else {
+                      startForeground(7, n);
+                  }
+              }
+
+              private void build() {
+                  wm = (WindowManager) getSystemService(Context.WINDOW_SERVICE);
+                  root = new LinearLayout(this);
+                  root.setOrientation(LinearLayout.HORIZONTAL);
+                  root.setGravity(Gravity.CENTER_VERTICAL);
+                  root.setLayoutDirection(View.LAYOUT_DIRECTION_RTL);
+                  root.setPadding(dp(16), dp(7), dp(16), dp(7));
+                  GradientDrawable bg = new GradientDrawable();
+                  bg.setColor(Color.BLACK);
+                  bg.setCornerRadius(dp(22));
+                  root.setBackground(bg);
+                  tin = label(Color.parseColor("#4FD6B2"));
+                  tout = label(Color.parseColor("#FF8CA0"));
+                  View gap = new View(this);
+                  root.addView(tin);
+                  root.addView(gap, new LinearLayout.LayoutParams(dp(18), 1));
+                  root.addView(tout);
+                  root.setOnClickListener(new View.OnClickListener() {
+                      @Override
+                      public void onClick(View v) {
+                          Intent li = getPackageManager().getLaunchIntentForPackage(getPackageName());
+                          if (li != null) {
+                              li.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                              startActivity(li);
+                          }
+                      }
+                  });
+                  int type = Build.VERSION.SDK_INT >= 26
+                          ? WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                          : WindowManager.LayoutParams.TYPE_PHONE;
+                  WindowManager.LayoutParams p = new WindowManager.LayoutParams(
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          ViewGroup.LayoutParams.WRAP_CONTENT,
+                          type,
+                          WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE | WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                          PixelFormat.TRANSLUCENT);
+                  p.gravity = Gravity.TOP | Gravity.CENTER_HORIZONTAL;
+                  p.y = dp(6);
+                  wm.addView(root, p);
+              }
+
+              @Override
+              public int onStartCommand(Intent intent, int flags, int startId) {
+                  SharedPreferences sp = getSharedPreferences("island", MODE_PRIVATE);
+                  if (intent != null && intent.hasExtra("in")) {
+                      sp.edit().putString("in", intent.getStringExtra("in")).putString("out", intent.getStringExtra("out")).apply();
+                  }
+                  startAsForeground();
+                  if (root == null) {
+                      build();
+                  }
+                  tin.setText(sp.getString("in", "\u0644\u064a 0"));
+                  tout.setText(sp.getString("out", "\u0639\u0644\u064a 0"));
+                  return START_STICKY;
+              }
+
+              @Override
+              public void onDestroy() {
+                  if (root != null && wm != null) {
+                      try {
+                          wm.removeView(root);
+                      } catch (Exception e) {
+                      }
+                      root = null;
+                  }
+                  super.onDestroy();
+              }
+          }
+          JAVA3
+          python3 - << 'PY'
+          p = 'android/app/src/main/AndroidManifest.xml'
+          s = open(p, encoding='utf-8').read()
+          svc = '<service android:name=".IslandService" android:exported="false" android:foregroundServiceType="specialUse"><property android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE" android:value="overlay"/></service></application>'
+          perms = '<uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE"/><uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/></manifest>'
+          s = s.replace('</application>', svc, 1).replace('</manifest>', perms, 1)
+          open(p, 'w', encoding='utf-8').write(s)
+          PY
       - run: sed -i "s/versionCode 1/versionCode ${{ github.run_number }}/" android/app/build.gradle
       - run: npx cap sync android
       - run: cd android && chmod +x gradlew && ./gradlew assembleDebug
